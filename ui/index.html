@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BharatSolve — solver console</title>
+<style>
+  :root{
+    --bg:#0e1420; --panel:#141c2b; --panel2:#182236; --line:#26334a;
+    --ink:#dfe7f3; --ink-dim:#8ea0bd; --accent:#e08a3c; --accent-dim:#7a5330;
+    --good:#4fae7a; --bad:#d9645f; --warn:#e0b23c;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    background:var(--bg); color:var(--ink); font-family:var(--sans);
+    display:flex; flex-direction:column;
+  }
+  header{
+    padding:14px 20px; border-bottom:1px solid var(--line);
+    display:flex; align-items:baseline; gap:12px;
+  }
+  header .mark{
+    font-family:var(--mono); font-weight:600; letter-spacing:.02em; font-size:16px;
+    color:var(--accent);
+  }
+  header .tag{color:var(--ink-dim); font-size:13px}
+  main{flex:1; display:flex; min-height:0}
+  .panel{
+    border-right:1px solid var(--line); padding:18px; width:340px; flex-shrink:0;
+    overflow-y:auto;
+  }
+  .panel h2{font-size:12px; text-transform:none; color:var(--ink-dim); margin:0 0 10px; font-weight:600}
+  select, input[type=number], textarea, button{
+    font-family:var(--sans); font-size:14px; background:var(--panel2); color:var(--ink);
+    border:1px solid var(--line); border-radius:4px; padding:7px 9px; width:100%;
+  }
+  .row{margin-bottom:14px}
+  .row.inline{display:flex; align-items:center; gap:8px}
+  .row.inline label{flex:1; font-size:13px; color:var(--ink-dim)}
+  .row.inline input[type=checkbox]{width:auto}
+  .droparea{
+    border:1px dashed var(--line); border-radius:6px; padding:16px; text-align:center;
+    color:var(--ink-dim); font-size:13px; cursor:pointer;
+  }
+  .droparea:hover{border-color:var(--accent-dim)}
+  #filename{font-family:var(--mono); font-size:12px; color:var(--accent); margin-top:6px; word-break:break-all}
+  button.solve{
+    background:var(--accent); color:#1a1206; border:none; font-weight:600; margin-top:4px;
+    cursor:pointer;
+  }
+  button.solve:hover{filter:brightness(1.08)}
+  button.solve:disabled{opacity:.5; cursor:default}
+  .content{flex:1; display:flex; flex-direction:column; min-width:0}
+  .content .body{flex:1; display:flex; min-height:0}
+  #log{
+    width:44%; border-right:1px solid var(--line); padding:16px; overflow-y:auto;
+    font-family:var(--mono); font-size:12.5px; line-height:1.6; color:var(--ink-dim);
+    white-space:pre-wrap;
+  }
+  #result{flex:1; padding:16px 20px; overflow-y:auto}
+  .stat-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; margin-bottom:18px}
+  .stat{background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:10px 12px}
+  .stat .k{font-size:11px; color:var(--ink-dim); margin-bottom:4px}
+  .stat .v{font-family:var(--mono); font-size:17px}
+  .status-pill{
+    display:inline-block; padding:2px 9px; border-radius:99px; font-size:12px; font-weight:600;
+    font-family:var(--mono);
+  }
+  .status-optimal{background:rgba(79,174,122,.18); color:var(--good)}
+  .status-feasible{background:rgba(224,178,60,.18); color:var(--warn)}
+  .status-bad{background:rgba(217,100,95,.18); color:var(--bad)}
+  table{width:100%; border-collapse:collapse; font-family:var(--mono); font-size:12.5px}
+  th,td{text-align:left; padding:5px 8px; border-bottom:1px solid var(--line)}
+  th{color:var(--ink-dim); font-weight:500; position:sticky; top:0; background:var(--bg)}
+  h3{font-size:13px; color:var(--ink-dim); margin:18px 0 8px; font-weight:600}
+  .empty{color:var(--ink-dim); font-size:13px; padding:40px 0; text-align:center}
+  .verify-ok{color:var(--good)}
+  .verify-bad{color:var(--bad)}
+</style>
+</head>
+<body>
+<header>
+  <span class="mark">BharatSolve</span>
+  <span class="tag">indigenous LP / MILP solver core — prototype console</span>
+</header>
+<main>
+  <div class="panel">
+    <div class="row">
+      <h2>Model</h2>
+      <div class="droparea" id="drop">Drop an .mps file or click to choose<div id="filename"></div></div>
+      <input type="file" id="fileInput" accept=".mps,.txt" style="display:none">
+    </div>
+    <div class="row">
+      <h2>Sample instances</h2>
+      <select id="sampleSelect"><option value="">— none —</option></select>
+    </div>
+    <div class="row">
+      <h2>Options</h2>
+      <div class="row inline"><label for="timeLimit">Time limit (s)</label>
+        <input type="number" id="timeLimit" value="20" min="0.5" step="0.5" style="width:80px">
+      </div>
+      <div class="row inline"><input type="checkbox" id="noPresolve"><label for="noPresolve">Disable presolve</label></div>
+      <div class="row inline"><input type="checkbox" id="noScale"><label for="noScale">Disable scaling</label></div>
+    </div>
+    <button class="solve" id="solveBtn">Solve</button>
+  </div>
+  <div class="content">
+    <div class="body">
+      <div id="log">Choose or drop a model, then click Solve.
+The solver's own log (presolve, scaling, status) appears here.</div>
+      <div id="result"><div class="empty">No solve yet.</div></div>
+    </div>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let modelText = null, modelName = null;
+
+fetch('/api/samples').then(r=>r.json()).then(list=>{
+  const sel = $('sampleSelect');
+  for (const name of list) {
+    const opt = document.createElement('option');
+    opt.value = name; opt.textContent = name;
+    sel.appendChild(opt);
+  }
+});
+
+$('sampleSelect').addEventListener('change', async (e) => {
+  if (!e.target.value) return;
+  const r = await fetch('/api/sample/' + encodeURIComponent(e.target.value));
+  const j = await r.json();
+  modelText = j.text; modelName = j.name;
+  $('filename').textContent = modelName;
+  $('fileInput').value = '';
+});
+
+$('drop').addEventListener('click', () => $('fileInput').click());
+$('fileInput').addEventListener('change', (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  modelName = f.name;
+  f.text().then(t => { modelText = t; $('filename').textContent = modelName; $('sampleSelect').value=''; });
+});
+['dragover','drop'].forEach(ev => $('drop').addEventListener(ev, e => e.preventDefault()));
+$('drop').addEventListener('drop', (e) => {
+  const f = e.dataTransfer.files[0];
+  if (!f) return;
+  modelName = f.name;
+  f.text().then(t => { modelText = t; $('filename').textContent = modelName; $('sampleSelect').value=''; });
+});
+
+function statusClass(s) {
+  if (s === 'optimal') return 'status-optimal';
+  if (s === 'feasible') return 'status-feasible';
+  return 'status-bad';
+}
+
+$('solveBtn').addEventListener('click', async () => {
+  if (!modelText) { $('log').textContent = 'Choose a model first.'; return; }
+  const btn = $('solveBtn'); btn.disabled = true; btn.textContent = 'Solving…';
+  $('log').textContent = 'Running BharatSolve…\n';
+  $('result').innerHTML = '<div class="empty">Solving…</div>';
+  try {
+    const body = new FormData();
+    body.append('text', modelText);
+    body.append('time_limit', $('timeLimit').value);
+    body.append('no_presolve', $('noPresolve').checked ? 'true' : 'false');
+    body.append('no_scale', $('noScale').checked ? 'true' : 'false');
+    const r = await fetch('/api/solve', { method: 'POST', body });
+    const j = await r.json();
+    $('log').textContent = (j.log || '') + (j.error ? '\n' + j.error : '');
+    if (!j.solution) { $('result').innerHTML = '<div class="empty">No solution produced.</div>'; return; }
+    renderResult(j.solution);
+  } catch (err) {
+    $('log').textContent = 'Request failed: ' + err;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Solve';
+  }
+});
+
+function renderResult(s) {
+  const v = s.verification || {};
+  const rows = [];
+  rows.push(['Status', `<span class="status-pill ${statusClass(s.status)}">${s.status}</span>`]);
+  rows.push(['Objective', s.objective]);
+  rows.push(['Method', s.method || '—']);
+  rows.push(['Iterations', s.iterations]);
+  rows.push(['Nodes', s.nodes]);
+  rows.push(['Time (s)', s.seconds !== undefined ? s.seconds.toFixed(4) : '—']);
+  rows.push(['Verified', v.ok
+      ? '<span class="verify-ok">ok</span>'
+      : `<span class="verify-bad">FAILED</span>`]);
+
+  let html = '<div class="stat-grid">' + rows.map(([k,v]) =>
+    `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('') + '</div>';
+
+  if (s.presolve) {
+    html += `<h3>Presolve / scaling</h3><div class="stat-grid">
+      <div class="stat"><div class="k">Rows removed</div><div class="v">${s.presolve.rows_removed}</div></div>
+      <div class="stat"><div class="k">Cols removed</div><div class="v">${s.presolve.cols_removed}</div></div>
+      <div class="stat"><div class="k">Scale range</div><div class="v">${s.scaling ? s.scaling.min.toFixed(3)+' – '+s.scaling.max.toFixed(3) : '—'}</div></div>
+    </div>`;
+  }
+
+  if (s.variables && s.variables.length) {
+    const shown = s.variables.slice(0, 200);
+    html += `<h3>Variables ${s.variables.length > 200 ? '(first 200 of ' + s.variables.length + ')' : ''}</h3>
+      <table><thead><tr><th>name</th><th>value</th></tr></thead><tbody>` +
+      shown.map(v => `<tr><td>${v.name}</td><td>${fmt(v.value)}</td></tr>`).join('') +
+      '</tbody></table>';
+  }
+  $('result').innerHTML = html;
+}
+function fmt(x) { return (Math.abs(x) < 1e-9) ? '0' : Number(x).toPrecision(8).replace(/\.?0+$/,''); }
+</script>
+</body>
+</html>

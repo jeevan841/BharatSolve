@@ -46,6 +46,8 @@ struct Options {
   bool scale = true;
   int seed = 1;
   int threads = 1;                // accepted; single-threaded in this release
+  std::string gpu = "off";        // pricing offload: off | auto | on | emulate (see src/gpu.hpp)
+  long gpuMinNnz = 500000;        // 'auto' only offloads matrices with at least this many nonzeros
   int log = 1;                    // 0 silent, 1 summary, 2 progress, 3 iterations
   double feasTol = 1e-7, optTol = 1e-7, pivTol = 1e-9, intTol = 1e-6;
   double verifyTol = 1e-6;
@@ -77,6 +79,8 @@ struct Solution {
   double condEstimate = 0;
   int numericalEvents = 0;
   Verification ver;
+  std::string pricing;    // pricing backend used: cpu, cuda or emulated-device
+  double pricingSeconds = 0;   // wall time in the pricing step (what a GPU could speed up)
   std::string method;
 };
 
@@ -93,8 +97,11 @@ struct Basis {
   bool valid() const { return !basic.empty(); }
 };
 
+class PricingBackend;
+
 class Simplex {
  public:
+  void setPricer(std::shared_ptr<PricingBackend> p) { pricer_ = std::move(p); }
   Simplex(const Model& mdl, const Options& o);
   void setColBounds(int j, double l, double u);      // structural j
   void resetBounds();
@@ -108,6 +115,7 @@ class Simplex {
   const std::vector<double>& ray() const { return ray_; }
   const std::string& rayKind() const { return rayKind_; }
   long iterations() const { return iters_; }
+  double pricingSeconds() const { return pricingSeconds_; }
   int numericalEvents() const { return numEvents_; }
   double lbOf(int j) const { return lb_[j]; }
   double ubOf(int j) const { return ub_[j]; }
@@ -118,15 +126,24 @@ class Simplex {
  private:
   int m_, n_, N_;
   const Model& M_;
+  std::shared_ptr<PricingBackend> pricer_;      // null = plain CPU pricing loop
+  void priceAll(const std::vector<double>& cst, const std::vector<double>& y);
+  double pricingSeconds_ = 0;                    // wall time spent in pricing (the offloadable step)
   Options opt_;
   std::vector<double> lb_, ub_, lb0_, ub0_, cost_, cost0_, x_, d_;
   std::vector<int> basic_, pos_;
   std::vector<char> stat_;
   unsigned rng_ = 1;
-  // dense LU (basis matrix) + product-form eta updates between refactorizations
-  std::vector<double> lu_;
-  std::vector<int> piv_;
-  struct Eta { int r; std::vector<double> a; };
+  // Sparse LU of the basis (Markowitz pivoting with a stability threshold) plus
+  // product-form eta updates between refactorizations.
+  //   pivot t eliminates row prow_[t] using column pcol_[t] (a basis position).
+  //   L: per pivot, the multipliers (row, value).  U: per pivot, the rest of the pivot row.
+  std::vector<int> prow_, pcol_;
+  std::vector<double> pivVal_;
+  std::vector<int> lPtr_, lIdx_;      std::vector<double> lVal_;     // L multipliers, by pivot
+  std::vector<int> uRowPtr_, uRowIdx_; std::vector<double> uRowVal_; // U rows, by pivot (column ids)
+  std::vector<int> uColPtr_, uColIdx_; std::vector<double> uColVal_; // U columns, by column id (row ids)
+  struct Eta { int r; double ar; std::vector<int> idx; std::vector<double> val; };
   std::vector<Eta> etas_;
   long iters_ = 0;
   int numEvents_ = 0;

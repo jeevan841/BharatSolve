@@ -10,6 +10,8 @@ from flask import Flask, request, jsonify, send_from_directory
 HERE = os.path.dirname(os.path.abspath(__file__))
 BS = os.path.join(HERE, "..", "bin", "bharatsolve")
 SAMPLES = os.path.join(HERE, "..", "data")
+DEMO = os.path.join(HERE, "..", "demo")
+SAMPLE_DIRS = [DEMO, SAMPLES]   # demo model is listed first so it is easy to find live
 
 app = Flask(__name__, static_folder=None)
 
@@ -17,15 +19,26 @@ app = Flask(__name__, static_folder=None)
 def index():
     return send_from_directory(HERE, "index.html")
 
+def _find_sample(name):
+    for d in SAMPLE_DIRS:
+        base = os.path.abspath(d)
+        path = os.path.abspath(os.path.join(base, name))
+        if path.startswith(base + os.sep) and os.path.isfile(path):
+            return path
+    return None
+
 @app.route("/api/samples")
 def samples():
-    files = sorted(f for f in os.listdir(SAMPLES) if f.endswith(".mps"))
+    files = []
+    for d in SAMPLE_DIRS:
+        if os.path.isdir(d):
+            files += sorted(f for f in os.listdir(d) if f.endswith(".mps"))
     return jsonify(files)
 
 @app.route("/api/sample/<name>")
 def sample_text(name):
-    path = os.path.join(SAMPLES, name)
-    if not os.path.abspath(path).startswith(os.path.abspath(SAMPLES)) or not os.path.isfile(path):
+    path = _find_sample(name)
+    if path is None:
         return jsonify({"error": "not found"}), 404
     with open(path) as f:
         return jsonify({"name": name, "text": f.read()})
@@ -55,7 +68,11 @@ def solve():
         if no_presolve: cmd.append("--no-presolve")
         if no_scale: cmd.append("--no-scale")
         t0 = time.time()
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=time_limit + 10)
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=time_limit + 10)
+        except subprocess.TimeoutExpired:
+            return jsonify({"error": "solver did not finish within the time limit", "exit_code": 5,
+                            "wall_seconds": time.time() - t0})
         wall = time.time() - t0
         result = {"log": proc.stderr, "wall_seconds": wall, "exit_code": proc.returncode}
         if os.path.exists(json_path):

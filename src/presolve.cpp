@@ -156,11 +156,13 @@ Model applyScaling(const Model& m, const Scaling& s) {
   for (int j = 0; j < r.n; j++) {
     double c = s.C[j];
     r.c[j] *= c;
-    if (!isInf(r.lb[j])) r.lb[j] /= c; if (!isInf(r.ub[j])) r.ub[j] /= c;
+    if (!isInf(r.lb[j])) r.lb[j] /= c;
+    if (!isInf(r.ub[j])) r.ub[j] /= c;
   }
   for (int i = 0; i < r.m; i++) {
     double rr = s.R[i];
-    if (!isInf(r.rl[i])) r.rl[i] *= rr; if (!isInf(r.ru[i])) r.ru[i] *= rr;
+    if (!isInf(r.rl[i])) r.rl[i] *= rr;
+    if (!isInf(r.ru[i])) r.ru[i] *= rr;
   }
   return r;
 }

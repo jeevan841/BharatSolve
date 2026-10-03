@@ -7,7 +7,7 @@
 namespace bs {
 
 Verification verify(const Model& M, const std::vector<double>& x, const std::vector<double>& y,
-                    const std::vector<double>& d, bool lpDuals, const Options& o) {
+                    const std::vector<double>& /*d*/, bool lpDuals, const Options& o) {
   Verification v; v.ran = true;
   int n = M.n, m = M.m;
   // Primal feasibility: bounds + row activity, from scratch.

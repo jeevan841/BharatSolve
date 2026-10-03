@@ -14,7 +14,7 @@ static std::vector<std::string> tok(const std::string& line) {
   return out;
 }
 
-bool readMpsStream(std::istream& in, Model& M, std::string& err) {
+static bool readMpsStreamImpl(std::istream& in, Model& M, std::string& err) {
   std::string line;
   std::string section;
   std::unordered_map<std::string, int> rowIdx, colIdx;
@@ -183,6 +183,15 @@ const char* statusName(Status s) {
     default: return "unsupported";
   }
 }
+// Malformed numbers or fields must produce a clean input error (exit 10), never a crash.
+bool readMpsStream(std::istream& in, Model& M, std::string& err) {
+  try {
+    return readMpsStreamImpl(in, M, err);
+  } catch (const std::exception&) {
+    err = "malformed MPS file: a numeric field could not be read";
+    return false;
+  }
+}
 int exitCode(Status s) {
   switch (s) {
     case Status::Optimal: return 0;
@@ -192,6 +201,7 @@ int exitCode(Status s) {
     case Status::Unverified: return 4;
     case Status::LimitNoSol: return 5;
     case Status::InputError: return 10;
+    case Status::Unsupported: return 11;
     default: return 20;
   }
 }
